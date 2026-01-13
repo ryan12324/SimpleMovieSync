@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SimpleMovieSync - Watch Movies Together</title>
+  <link rel="stylesheet" href="/css/styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <header class="header">
+    <div class="header-content">
+      <div class="logo">SimpleMovieSync</div>
+      <nav class="nav-links">
+        <a href="/">Home</a>
+        <a href="/admin">Admin Panel</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="hero">
+      <h1>Watch Movies Together</h1>
+      <p>Synchronized movie streaming with your friends. Share reactions, chat in real-time, and enjoy movies together no matter where you are.</p>
+      <div style="display: flex; gap: 15px; justify-content: center;">
+        <a href="/admin" class="btn btn-primary">Set Up a Room</a>
+        <button class="btn btn-secondary" onclick="scrollToRooms()">Join a Room</button>
+      </div>
+    </section>
+
+    <section class="features">
+      <div class="feature-card">
+        <div class="feature-icon">🎬</div>
+        <h3>Multi-Quality Streaming</h3>
+        <p>Automatically transcode movies into multiple qualities for smooth playback on any connection.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🔄</div>
+        <h3>Perfect Sync</h3>
+        <p>Everyone sees the same frame at the same time. Play, pause, and seek controls are synchronized.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">💬</div>
+        <h3>Live Chat</h3>
+        <p>Chat with other viewers in real-time while watching. Share your thoughts as the movie plays.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">😀</div>
+        <h3>Emoji Reactions</h3>
+        <p>Express yourself with floating emoji reactions that everyone can see.</p>
+      </div>
+    </section>
+
+    <section class="join-section" id="rooms-section">
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">Available Rooms</h2>
+          <button class="btn btn-secondary" onclick="loadRooms()">Refresh</button>
+        </div>
+        <div id="rooms-container">
+          <div class="room-grid" id="room-grid">
+            <!-- Rooms will be loaded here -->
+          </div>
+          <p id="no-rooms" class="text-center text-muted hidden">No rooms available. Ask an admin to create one!</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Join Room Modal -->
+    <div class="modal-overlay" id="join-modal">
+      <div class="modal">
+        <div class="modal-header">
+          <h3 class="modal-title">Join Room</h3>
+          <button class="modal-close" onclick="closeJoinModal()">&times;</button>
+        </div>
+        <form id="join-form" onsubmit="submitJoin(event)">
+          <input type="hidden" id="join-room-id">
+          <div class="form-group">
+            <label class="form-label">Your Name</label>
+            <input type="text" class="form-input" id="join-username" placeholder="Enter your name" required maxlength="20">
+          </div>
+          <button type="submit" class="btn btn-primary" style="width: 100%;">Join Room</button>
+        </form>
+      </div>
+    </div>
+  </main>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+
+    // Load rooms on page load
+    document.addEventListener('DOMContentLoaded', loadRooms);
+
+    async function loadRooms() {
+      try {
+        const response = await fetch('/api/rooms');
+        const rooms = await response.json();
+        renderRooms(rooms);
+      } catch (error) {
+        console.error('Failed to load rooms:', error);
+      }
+    }
+
+    function renderRooms(rooms) {
+      const grid = document.getElementById('room-grid');
+      const noRooms = document.getElementById('no-rooms');
+
+      if (rooms.length === 0) {
+        grid.innerHTML = '';
+        noRooms.classList.remove('hidden');
+        return;
+      }
+
+      noRooms.classList.add('hidden');
+      grid.innerHTML = rooms.map(room => `
+        <div class="room-card">
+          <h4>${escapeHtml(room.name)}</h4>
+          <p class="movie-name">Playing: ${escapeHtml(room.movie.originalName)}</p>
+          <div class="room-stats">
+            <span class="viewer-count">
+              <span class="viewer-dot"></span>
+              ${room.viewerCount || 0} watching
+            </span>
+            <button class="btn btn-primary" onclick="openJoinModal('${room.id}')">Join</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function openJoinModal(roomId) {
+      document.getElementById('join-room-id').value = roomId;
+      document.getElementById('join-modal').classList.add('active');
+      document.getElementById('join-username').focus();
+    }
+
+    function closeJoinModal() {
+      document.getElementById('join-modal').classList.remove('active');
+    }
+
+    function submitJoin(event) {
+      event.preventDefault();
+      const roomId = document.getElementById('join-room-id').value;
+      const username = document.getElementById('join-username').value.trim();
+
+      if (username) {
+        localStorage.setItem('movieSync_username', username);
+        window.location.href = `/watch/${roomId}?username=${encodeURIComponent(username)}`;
+      }
+    }
+
+    function scrollToRooms() {
+      document.getElementById('rooms-section').scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // Close modal on outside click
+    document.getElementById('join-modal').addEventListener('click', (e) => {
+      if (e.target.classList.contains('modal-overlay')) {
+        closeJoinModal();
+      }
+    });
+  </script>
+</body>
+</html>

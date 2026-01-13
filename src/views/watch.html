@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Watch - SimpleMovieSync</title>
+  <link rel="stylesheet" href="/css/styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <header class="header">
+    <div class="header-content">
+      <div class="logo">SimpleMovieSync</div>
+      <div class="sync-indicator" id="sync-indicator">
+        <span class="sync-dot synced" id="sync-dot"></span>
+        <span id="sync-text">Synced</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="watch-container">
+    <!-- Video Section -->
+    <div class="video-section">
+      <div class="video-wrapper">
+        <video
+          id="video-player"
+          class="video-player"
+          controls
+          playsinline
+        >
+          Your browser does not support the video tag.
+        </video>
+      </div>
+      <div class="video-controls">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+          <div class="quality-selector">
+            <span class="text-muted">Quality:</span>
+            <div id="quality-buttons">
+              <!-- Quality buttons will be added dynamically -->
+            </div>
+          </div>
+          <div style="display: flex; gap: 10px; align-items: center;">
+            <button class="btn btn-secondary" id="sync-btn" onclick="requestSync()">Sync Now</button>
+            <span class="viewer-count">
+              <span class="viewer-dot"></span>
+              <span id="viewer-count">0</span> watching
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <!-- Viewers Panel -->
+      <div class="viewers-panel">
+        <h3>Viewers</h3>
+        <div class="viewers-list" id="viewers-list">
+          <!-- Viewers will be added dynamically -->
+        </div>
+      </div>
+
+      <!-- Reactions Panel -->
+      <div class="reactions-panel">
+        <div class="reactions-header">
+          <h3>Reactions</h3>
+        </div>
+        <div class="emoji-buttons">
+          <button class="emoji-btn" onclick="sendReaction('😀')">😀</button>
+          <button class="emoji-btn" onclick="sendReaction('😂')">😂</button>
+          <button class="emoji-btn" onclick="sendReaction('😍')">😍</button>
+          <button class="emoji-btn" onclick="sendReaction('😮')">😮</button>
+          <button class="emoji-btn" onclick="sendReaction('😢')">😢</button>
+          <button class="emoji-btn" onclick="sendReaction('😱')">😱</button>
+          <button class="emoji-btn" onclick="sendReaction('👍')">👍</button>
+          <button class="emoji-btn" onclick="sendReaction('👎')">👎</button>
+          <button class="emoji-btn" onclick="sendReaction('❤️')">❤️</button>
+          <button class="emoji-btn" onclick="sendReaction('🔥')">🔥</button>
+          <button class="emoji-btn" onclick="sendReaction('👏')">👏</button>
+          <button class="emoji-btn" onclick="sendReaction('🎉')">🎉</button>
+        </div>
+      </div>
+
+      <!-- Chat Panel -->
+      <div class="chat-panel">
+        <div class="chat-header">
+          <h3>Chat</h3>
+        </div>
+        <div class="chat-messages" id="chat-messages">
+          <!-- Messages will be added dynamically -->
+        </div>
+        <div class="chat-input-container">
+          <input
+            type="text"
+            class="chat-input"
+            id="chat-input"
+            placeholder="Type a message..."
+            maxlength="500"
+            onkeypress="handleChatKeypress(event)"
+          >
+          <button class="btn btn-primary" onclick="sendMessage()">Send</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Floating Reactions Container -->
+  <div class="floating-reactions" id="floating-reactions"></div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    const video = document.getElementById('video-player');
+
+    // Get room ID from URL
+    const pathParts = window.location.pathname.split('/');
+    const roomId = pathParts[pathParts.length - 1];
+
+    // Get username from URL params or localStorage
+    const urlParams = new URLSearchParams(window.location.search);
+    let username = urlParams.get('username') || localStorage.getItem('movieSync_username') || `Viewer_${Math.random().toString(36).substr(2, 4)}`;
+    localStorage.setItem('movieSync_username', username);
+
+    // State
+    let room = null;
+    let currentQuality = null;
+    let isSeeking = false;
+    let lastSyncTime = Date.now();
+    let isController = false;
+    const SYNC_TOLERANCE = 2; // seconds
+
+    // Join room
+    socket.emit('joinRoom', { roomId, username });
+
+    // Socket event listeners
+    socket.on('roomState', (state) => {
+      room = state.room;
+      document.title = `${room.name} - SimpleMovieSync`;
+
+      // Set up video source with first available quality
+      if (room.movie.qualities && room.movie.qualities.length > 0) {
+        setupQualityButtons(room.movie.qualities);
+        selectQuality(room.movie.qualities[room.movie.qualities.length - 1]); // Start with highest quality
+      }
+
+      // Apply initial playback state
+      applyPlaybackState(state.playbackState);
+
+      // Load chat history
+      state.chat.forEach(msg => addChatMessage(msg));
+
+      // Update viewers
+      updateViewersList(state.viewers);
+    });
+
+    socket.on('error', (error) => {
+      alert(error.message);
+      window.location.href = '/';
+    });
+
+    socket.on('viewerJoined', ({ viewer }) => {
+      addChatMessage({
+        username: 'System',
+        message: `${viewer.username} joined the room`,
+        timestamp: new Date(),
+        isSystem: true
+      });
+    });
+
+    socket.on('viewerLeft', ({ username: leftUser }) => {
+      addChatMessage({
+        username: 'System',
+        message: `${leftUser} left the room`,
+        timestamp: new Date(),
+        isSystem: true
+      });
+    });
+
+    socket.on('viewerCount', ({ count }) => {
+      document.getElementById('viewer-count').textContent = count;
+    });
+
+    socket.on('syncPlay', ({ currentTime, serverTime }) => {
+      if (!isController) {
+        const latency = (Date.now() - serverTime) / 1000;
+        video.currentTime = currentTime + latency;
+        video.play().catch(() => {});
+        updateSyncStatus('synced');
+      }
+    });
+
+    socket.on('syncPause', ({ currentTime }) => {
+      if (!isController) {
+        video.currentTime = currentTime;
+        video.pause();
+        updateSyncStatus('synced');
+      }
+    });
+
+    socket.on('syncSeek', ({ currentTime }) => {
+      if (!isController) {
+        video.currentTime = currentTime;
+        updateSyncStatus('synced');
+      }
+    });
+
+    socket.on('syncState', ({ isPlaying, currentTime, serverTime }) => {
+      const latency = (Date.now() - serverTime) / 1000;
+      video.currentTime = isPlaying ? currentTime + latency : currentTime;
+
+      if (isPlaying) {
+        video.play().catch(() => {});
+      } else {
+        video.pause();
+      }
+
+      updateSyncStatus('synced');
+      lastSyncTime = Date.now();
+    });
+
+    socket.on('syncHeartbeat', ({ isPlaying, currentTime, serverTime }) => {
+      if (!isController && isPlaying) {
+        const latency = (Date.now() - serverTime) / 1000;
+        const expectedTime = currentTime + latency;
+        const drift = Math.abs(video.currentTime - expectedTime);
+
+        if (drift > SYNC_TOLERANCE) {
+          video.currentTime = expectedTime;
+          updateSyncStatus('syncing');
+          setTimeout(() => updateSyncStatus('synced'), 500);
+        }
+      }
+    });
+
+    socket.on('newMessage', (message) => {
+      addChatMessage(message);
+    });
+
+    socket.on('newReaction', (reaction) => {
+      showFloatingReaction(reaction.emoji);
+    });
+
+    // Video event listeners
+    video.addEventListener('play', () => {
+      if (isController || document.querySelector('.btn-primary[onclick*="controller"]')) {
+        socket.emit('play', { roomId, currentTime: video.currentTime });
+      }
+    });
+
+    video.addEventListener('pause', () => {
+      if (isController || !video.seeking) {
+        socket.emit('pause', { roomId, currentTime: video.currentTime });
+      }
+    });
+
+    video.addEventListener('seeked', () => {
+      if (!isSeeking) {
+        socket.emit('seek', { roomId, currentTime: video.currentTime });
+      }
+      isSeeking = false;
+    });
+
+    video.addEventListener('seeking', () => {
+      isSeeking = true;
+    });
+
+    // Functions
+    function setupQualityButtons(qualities) {
+      const container = document.getElementById('quality-buttons');
+      container.innerHTML = qualities.map(q => `
+        <button class="quality-btn" data-quality="${q.quality}" onclick="selectQuality(${JSON.stringify(q).replace(/"/g, '&quot;')})">
+          ${q.quality}
+        </button>
+      `).join('');
+    }
+
+    function selectQuality(quality) {
+      const currentTime = video.currentTime;
+      const wasPlaying = !video.paused;
+
+      // Update active button
+      document.querySelectorAll('.quality-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.quality === quality.quality);
+      });
+
+      // Change video source
+      video.src = quality.url;
+      video.currentTime = currentTime;
+      currentQuality = quality;
+
+      if (wasPlaying) {
+        video.play().catch(() => {});
+      }
+    }
+
+    function applyPlaybackState(state) {
+      if (state.isPlaying) {
+        const elapsed = (Date.now() - state.lastUpdate) / 1000;
+        video.currentTime = state.currentTime + elapsed;
+        video.play().catch(() => {});
+      } else {
+        video.currentTime = state.currentTime;
+        video.pause();
+      }
+    }
+
+    function requestSync() {
+      updateSyncStatus('syncing');
+      socket.emit('requestSync', { roomId });
+    }
+
+    function updateSyncStatus(status) {
+      const dot = document.getElementById('sync-dot');
+      const text = document.getElementById('sync-text');
+
+      dot.className = 'sync-dot ' + status;
+
+      switch (status) {
+        case 'synced':
+          text.textContent = 'Synced';
+          break;
+        case 'syncing':
+          text.textContent = 'Syncing...';
+          break;
+        case 'desynced':
+          text.textContent = 'Out of sync';
+          break;
+      }
+    }
+
+    function updateViewersList(viewers) {
+      const container = document.getElementById('viewers-list');
+      container.innerHTML = viewers.map(v => `
+        <span class="viewer-badge">
+          <span class="viewer-dot"></span>
+          ${escapeHtml(v.username)}
+        </span>
+      `).join('');
+      document.getElementById('viewer-count').textContent = viewers.length;
+    }
+
+    // Chat functions
+    function sendMessage() {
+      const input = document.getElementById('chat-input');
+      const message = input.value.trim();
+
+      if (message) {
+        socket.emit('chatMessage', { roomId, message });
+        input.value = '';
+      }
+    }
+
+    function handleChatKeypress(event) {
+      if (event.key === 'Enter') {
+        sendMessage();
+      }
+    }
+
+    function addChatMessage(msg) {
+      const container = document.getElementById('chat-messages');
+      const messageEl = document.createElement('div');
+      messageEl.className = 'chat-message';
+
+      if (msg.isSystem) {
+        messageEl.innerHTML = `
+          <span class="message-text" style="color: var(--text-secondary); font-style: italic;">
+            ${escapeHtml(msg.message)}
+          </span>
+        `;
+      } else {
+        messageEl.innerHTML = `
+          <span class="username">${escapeHtml(msg.username)}</span>
+          <span class="message-text">${escapeHtml(msg.message)}</span>
+          <span class="timestamp">${formatTime(new Date(msg.timestamp))}</span>
+        `;
+      }
+
+      container.appendChild(messageEl);
+      container.scrollTop = container.scrollHeight;
+    }
+
+    // Reaction functions
+    function sendReaction(emoji) {
+      socket.emit('reaction', { roomId, emoji });
+    }
+
+    function showFloatingReaction(emoji) {
+      const container = document.getElementById('floating-reactions');
+      const reaction = document.createElement('div');
+      reaction.className = 'floating-reaction';
+      reaction.textContent = emoji;
+      reaction.style.left = `${Math.random() * 200 - 100}px`;
+      container.appendChild(reaction);
+
+      setTimeout(() => {
+        reaction.remove();
+      }, 3000);
+    }
+
+    // Utility functions
+    function formatTime(date) {
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // Enable all users to control playback (first user to interact becomes controller)
+    video.addEventListener('click', () => {
+      isController = true;
+      setTimeout(() => { isController = false; }, 1000);
+    });
+
+    // Keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+      // Don't intercept if typing in chat
+      if (e.target.id === 'chat-input') return;
+
+      switch (e.key) {
+        case ' ':
+          e.preventDefault();
+          isController = true;
+          if (video.paused) {
+            video.play();
+          } else {
+            video.pause();
+          }
+          setTimeout(() => { isController = false; }, 1000);
+          break;
+        case 'ArrowLeft':
+          e.preventDefault();
+          isController = true;
+          video.currentTime = Math.max(0, video.currentTime - 10);
+          setTimeout(() => { isController = false; }, 1000);
+          break;
+        case 'ArrowRight':
+          e.preventDefault();
+          isController = true;
+          video.currentTime = Math.min(video.duration, video.currentTime + 10);
+          setTimeout(() => { isController = false; }, 1000);
+          break;
+        case 'f':
+          if (document.fullscreenElement) {
+            document.exitFullscreen();
+          } else {
+            video.requestFullscreen();
+          }
+          break;
+      }
+    });
+  </script>
+</body>
+</html>
