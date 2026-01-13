@@ -29,6 +29,17 @@ services:
       retries: 3
       start_period: 10s
 
+  # Cloudflare Tunnel for remote access
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: simplemoviesync-tunnel
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - app
+
 volumes:
   uploads:
     driver: local
