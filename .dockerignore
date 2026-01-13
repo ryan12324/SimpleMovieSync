@@ -1,0 +1,39 @@
+# Dependencies
+node_modules
+npm-debug.log
+
+# Git
+.git
+.gitignore
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Uploads and transcoded (handled via volumes)
+uploads/*
+transcoded/*
+!uploads/.gitkeep
+!transcoded/.gitkeep
+
+# Config files (sensitive)
+.htpasswd
+config/
+
+# Documentation
+*.md
+!README.md
+
+# Testing
+coverage
+.nyc_output
+
+# Misc
+.env
+.env.*
