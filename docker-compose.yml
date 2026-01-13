@@ -13,8 +13,13 @@ services:
       - PORT=3000
       - HTPASSWD_PATH=/app/config/.htpasswd
     volumes:
-      - ./uploads:/app/uploads
-      - ./transcoded:/app/transcoded
+      # Uploaded video files
+      - uploads:/app/uploads
+      # Transcoded video files (different qualities)
+      - transcoded:/app/transcoded
+      # Source videos folder (optional - mount your video library here)
+      - ${VIDEOS_PATH:-./videos}:/app/videos:ro
+      # Configuration (htpasswd file)
       - ./config:/app/config:ro
     restart: unless-stopped
     healthcheck:
@@ -26,4 +31,6 @@ services:
 
 volumes:
   uploads:
+    driver: local
   transcoded:
+    driver: local

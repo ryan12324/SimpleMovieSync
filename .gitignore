@@ -17,6 +17,10 @@ uploads/*
 transcoded/*
 !transcoded/.gitkeep
 
+# Source video files (keep directory structure)
+videos/*
+!videos/.gitkeep
+
 # Config files with sensitive data
 config/
 .htpasswd
