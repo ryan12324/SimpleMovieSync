@@ -10,6 +10,7 @@ A synchronized movie streaming application that allows multiple people to watch 
 - **Emoji Reactions**: Express yourself with floating emoji reactions
 - **Admin Panel**: Upload movies, manage transcoding, and create rooms
 - **HTPasswd Authentication**: Secure admin panel with standard htpasswd authentication
+- **Cloudflare Tunnel**: Built-in support for remote access via Cloudflare Tunnel
 
 ## Quick Start
 
@@ -60,6 +61,67 @@ node scripts/add-user.js add admin yourpassword
 npm start
 ```
 
+## Cloudflare Tunnel Setup
+
+The Docker image includes Cloudflare Tunnel (cloudflared) for easy remote access.
+
+### Option 1: Quick Tunnel (Temporary URL)
+
+For testing or temporary access, use a quick tunnel that generates a random URL:
+
+```bash
+CLOUDFLARE_QUICK_TUNNEL=true docker-compose up -d
+```
+
+Check the logs for your tunnel URL:
+```bash
+docker logs simplemoviesync 2>&1 | grep "trycloudflare.com"
+```
+
+### Option 2: Named Tunnel (Persistent URL)
+
+For a permanent custom domain:
+
+1. **Create a Cloudflare account** at https://dash.cloudflare.com
+
+2. **Add your domain** to Cloudflare (or use a free subdomain)
+
+3. **Create a tunnel** in the Cloudflare Zero Trust dashboard:
+   - Go to https://one.dash.cloudflare.com
+   - Navigate to **Access** > **Tunnels**
+   - Click **Create a tunnel**
+   - Name your tunnel (e.g., "simplemoviesync")
+   - Copy the tunnel token
+
+4. **Configure the tunnel**:
+   - In the tunnel configuration, add a public hostname
+   - Set the service to `http://localhost:3000`
+
+5. **Run with your tunnel token**:
+```bash
+CLOUDFLARE_TUNNEL_TOKEN=your-token-here docker-compose up -d
+```
+
+Or create a `.env` file:
+```env
+CLOUDFLARE_TUNNEL_TOKEN=eyJhIjoixxxxxx...
+```
+
+Then run:
+```bash
+docker-compose up -d
+```
+
+### Verify Tunnel Status
+
+```bash
+# View all logs
+docker logs simplemoviesync
+
+# Follow logs in real-time
+docker logs -f simplemoviesync
+```
+
 ## Configuration
 
 ### Environment Variables
@@ -69,6 +131,9 @@ npm start
 | `PORT` | Server port | `3000` |
 | `HTPASSWD_PATH` | Path to htpasswd file | `./.htpasswd` |
 | `NODE_ENV` | Environment mode | `development` |
+| `CLOUDFLARE_TUNNEL_TOKEN` | Cloudflare named tunnel token | - |
+| `CLOUDFLARE_QUICK_TUNNEL` | Enable quick tunnel (set to `true`) | - |
+| `VIDEOS_PATH` | Path to video library | `./videos` |
 
 ### Docker Compose
 
@@ -76,6 +141,7 @@ The `docker-compose.yml` file includes:
 - Persistent volumes for uploads and transcoded files
 - Health checks
 - Auto-restart policy
+- Cloudflare Tunnel support
 
 Mount your htpasswd file:
 ```yaml
@@ -175,20 +241,25 @@ npm run dev
 npm start
 ```
 
-## Docker Hub
+## GitHub Container Registry
 
-Build and push your own image:
+Images are automatically built and pushed to GitHub Container Registry.
 
+Pull the latest image:
 ```bash
-docker build -t yourusername/simplemoviesync .
-docker push yourusername/simplemoviesync
+docker pull ghcr.io/ryan12324/simplemoviesync:latest
 ```
 
-Or use GitHub Actions (see `.github/workflows/docker-publish.yml`).
-
-Required secrets for GitHub Actions:
-- `DOCKERHUB_USERNAME` - Your Docker Hub username
-- `DOCKERHUB_TOKEN` - Docker Hub access token
+Run directly:
+```bash
+docker run -d \
+  -p 3000:3000 \
+  -v ./config:/app/config:ro \
+  -v ./uploads:/app/uploads \
+  -v ./transcoded:/app/transcoded \
+  -e CLOUDFLARE_TUNNEL_TOKEN=your-token \
+  ghcr.io/ryan12324/simplemoviesync:latest
+```
 
 ## License
 
