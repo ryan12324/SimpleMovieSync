@@ -12,6 +12,10 @@ services:
       - NODE_ENV=production
       - PORT=3000
       - HTPASSWD_PATH=/app/config/.htpasswd
+      # Cloudflare Tunnel (optional) - set token for named tunnel
+      - CLOUDFLARE_TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN:-}
+      # Or set to "true" for quick tunnel (temporary URL)
+      - CLOUDFLARE_QUICK_TUNNEL=${CLOUDFLARE_QUICK_TUNNEL:-}
     volumes:
       # Uploaded video files
       - uploads:/app/uploads

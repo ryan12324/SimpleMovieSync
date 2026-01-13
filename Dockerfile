@@ -12,8 +12,10 @@ RUN npm install --omit=dev
 # Production stage
 FROM node:20-alpine
 
-# Install FFmpeg
-RUN apk add --no-cache ffmpeg
+# Install FFmpeg and cloudflared
+RUN apk add --no-cache ffmpeg curl && \
+    curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o /usr/local/bin/cloudflared && \
+    chmod +x /usr/local/bin/cloudflared
 
 # Create non-root user
 RUN addgroup -g 1001 -S nodejs && \
@@ -28,9 +30,11 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY package*.json ./
 COPY src ./src
 COPY scripts ./scripts
+COPY entrypoint.sh ./
 
 # Create directories for uploads and transcoded files
 RUN mkdir -p uploads transcoded && \
+    chmod +x entrypoint.sh && \
     chown -R nodejs:nodejs /app
 
 # Switch to non-root user
@@ -48,4 +52,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:3000/ || exit 1
 
 # Start the application
-CMD ["node", "src/server.js"]
+ENTRYPOINT ["./entrypoint.sh"]
